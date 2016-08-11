@@ -77,9 +77,41 @@ class FCViewController: UIViewController, UITableViewDataSource, UITableViewDele
   }
 
   func configureRemoteConfig() {
+    remoteConfig = FIRRemoteConfig.remoteConfig()
+    // Create Remote Config Setting to enable developer mode.
+    // Fetching configs from the server is normally limited to 5 requests per hour.
+    // Enabling developer mode allows many more requests to be made per hour, so developers
+    // can test different config values during development.
+    let remoteConfigSettings = FIRRemoteConfigSettings(developerModeEnabled: true)
+    remoteConfig.configSettings = remoteConfigSettings!
   }
 
   func fetchConfig() {
+    var expirationDuration: Double = 3600
+    // If in developer mode cacheExpiration is set to 0 so each fetch will retrieve values from
+    // the server.
+    if (self.remoteConfig.configSettings.isDeveloperModeEnabled) {
+        expirationDuration = 0
+    }
+    
+    // cacheExpirationSeconds is set to cacheExpiration here, indicating that any previously
+    // fetched and cached config would be considered expired because it would have been fetched
+    // more than cacheExpiration seconds ago. Thus the next fetch would go to the server unless
+    // throttling is in progress. The default expiration duration is 43200 (12 hours).
+    remoteConfig.fetchWithExpirationDuration(expirationDuration) { (status, error) in
+        if (status == .Success) {
+            print("Config fetched!")
+            self.remoteConfig.activateFetched()
+            let friendlyMsgLength = self.remoteConfig["friendly_msg_length"]
+            if (friendlyMsgLength.source != .Static) {
+                self.msglength = friendlyMsgLength.numberValue!
+                print("Friendly msg length config: \(self.msglength)")
+            }
+        } else {
+            print("Config not fetched")
+            print("Error \(error)")
+        }
+    }
   }
 
   @IBAction func didPressFreshConfig(sender: AnyObject) {
@@ -174,25 +206,43 @@ class FCViewController: UIViewController, UITableViewDataSource, UITableViewDele
     presentViewController(picker, animated: true, completion:nil)
   }
 
-  func imagePickerController(picker: UIImagePickerController,
-    didFinishPickingMediaWithInfo info: [String : AnyObject]) {
-      picker.dismissViewControllerAnimated(true, completion:nil)
-
-    // if it's a photo from the library, not an image from the camera
-    if #available(iOS 8.0, *), let referenceUrl = info[UIImagePickerControllerReferenceURL] {
-      let assets = PHAsset.fetchAssetsWithALAssetURLs([referenceUrl as! NSURL], options: nil)
-      let asset = assets.firstObject
-      asset?.requestContentEditingInputWithOptions(nil, completionHandler: { (contentEditingInput, info) in
-        let imageFile = contentEditingInput?.fullSizeImageURL
-        let filePath = "\(FIRAuth.auth()?.currentUser?.uid)/\(Int(NSDate.timeIntervalSinceReferenceDate() * 1000))/\(referenceUrl.lastPathComponent!)"
-      })
-    } else {
-      let image = info[UIImagePickerControllerOriginalImage] as! UIImage
-      let imageData = UIImageJPEGRepresentation(image, 0.8)
-      let imagePath = FIRAuth.auth()!.currentUser!.uid +
-        "/\(Int(NSDate.timeIntervalSinceReferenceDate() * 1000)).jpg"
+    func imagePickerController(picker: UIImagePickerController,
+                               didFinishPickingMediaWithInfo info: [String : AnyObject]) {
+        picker.dismissViewControllerAnimated(true, completion:nil)
+        
+        // if it's a photo from the library, not an image from the camera
+        if #available(iOS 8.0, *), let referenceUrl = info[UIImagePickerControllerReferenceURL] {
+            let assets = PHAsset.fetchAssetsWithALAssetURLs([referenceUrl as! NSURL], options: nil)
+            let asset = assets.firstObject
+            asset?.requestContentEditingInputWithOptions(nil, completionHandler: { (contentEditingInput, info) in
+                let imageFile = contentEditingInput?.fullSizeImageURL
+                let filePath = "\(FIRAuth.auth()?.currentUser?.uid)/\(Int(NSDate.timeIntervalSinceReferenceDate() * 1000))/\(referenceUrl.lastPathComponent!)"
+                self.storageRef.child(filePath)
+                    .putFile(imageFile!, metadata: nil) { (metadata, error) in
+                        if let error = error {
+                            print("Error uploading: \(error.description)")
+                            return
+                        }
+                        self.sendMessage([Constants.MessageFields.imageUrl: self.storageRef.child((metadata?.path)!).description])
+                }
+            })
+        } else {
+            let image = info[UIImagePickerControllerOriginalImage] as! UIImage
+            let imageData = UIImageJPEGRepresentation(image, 0.8)
+            let imagePath = FIRAuth.auth()!.currentUser!.uid +
+                "/\(Int(NSDate.timeIntervalSinceReferenceDate() * 1000)).jpg"
+            let metadata = FIRStorageMetadata()
+            metadata.contentType = "image/jpeg"
+            self.storageRef.child(imagePath)
+                .putData(imageData!, metadata: metadata) { (metadata, error) in
+                    if let error = error {
+                        print("Error uploading: \(error)")
+                        return
+                    }
+                    self.sendMessage([Constants.MessageFields.imageUrl: self.storageRef.child((metadata?.path)!).description])
+            }
+        }
     }
-  }
 
   func imagePickerControllerDidCancel(picker: UIImagePickerController) {
     picker.dismissViewControllerAnimated(true, completion:nil)
