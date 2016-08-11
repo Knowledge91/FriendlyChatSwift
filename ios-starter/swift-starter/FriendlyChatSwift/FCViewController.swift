@@ -122,12 +122,13 @@ class FCViewController: UIViewController, UITableViewDataSource, UITableViewDele
     textFieldShouldReturn(textField)
   }
 
-  @IBAction func didPressCrash(sender: AnyObject) {
-    fatalError()
-  }
+    @IBAction func didPressCrash(sender: AnyObject) {
+        FIRCrashMessage("Cause Crash button clicked")
+    }
 
-  func logViewLoaded() {
-  }
+    func logViewLoaded() {
+        FIRCrashMessage("View loaded")
+    }
 
     func loadAd() {
         self.banner.adUnitID = kBannerAdUnitID
