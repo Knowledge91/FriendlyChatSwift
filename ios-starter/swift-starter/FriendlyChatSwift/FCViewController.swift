@@ -129,8 +129,11 @@ class FCViewController: UIViewController, UITableViewDataSource, UITableViewDele
   func logViewLoaded() {
   }
 
-  func loadAd() {
-  }
+    func loadAd() {
+        self.banner.adUnitID = kBannerAdUnitID
+        self.banner.rootViewController = self
+        self.banner.loadRequest(GADRequest())
+    }
 
   func textField(textField: UITextField, shouldChangeCharactersInRange range: NSRange, replacementString string: String) -> Bool {
     guard let text = textField.text else { return true }
